@@ -151,21 +151,33 @@ async function main() {
 
         // Find next page with multiple strategies
         function findNextPage($, base, currentPage) {
-            // Strategy 1: Direct pagination link
-            const nextPageNum = currentPage + 1;
-            const nextLink = $(`.gpagenav a[href*="pg=${nextPageNum}"]`).first().attr('href');
-            if (nextLink) return toAbs(nextLink, base);
+            // Strategy 1: Look for "weiter" (next) button in Geizhals pagination
+            let nextBtn = $('.xfsearchlink a, .listnavig a, a.listnavig__link').filter((_, el) => {
+                const text = $(el).text().trim().toLowerCase();
+                const title = $(el).attr('title')?.toLowerCase() || '';
+                return text === 'weiter' || title.includes('weiter') || text === '»' || 
+                       text.includes('nächste') || text.includes('next');
+            }).first();
+            
+            if (nextBtn.length > 0) {
+                const href = nextBtn.attr('href');
+                if (href) return toAbs(href, base);
+            }
 
-            // Strategy 2: rel="next"
+            // Strategy 2: Build next page URL with pg parameter
+            const nextPageNum = currentPage + 1;
+            if (base.includes('?')) {
+                // Check if current page has pg parameter
+                if (base.includes('&pg=') || base.includes('?pg=')) {
+                    return base.replace(/(\?|&)pg=\d+/, `$1pg=${nextPageNum}`);
+                } else {
+                    return `${base}&pg=${nextPageNum}`;
+                }
+            }
+
+            // Strategy 3: rel="next"
             const relNext = $('a[rel="next"]').attr('href');
             if (relNext) return toAbs(relNext, base);
-
-            // Strategy 3: Text-based detection
-            const nextBtn = $('.gpagenav a, .pagination a').filter((_, el) => {
-                const text = $(el).text().trim().toLowerCase();
-                return text.includes('nächste') || text.includes('next') || text === '›' || text === '»';
-            }).first().attr('href');
-            if (nextBtn) return toAbs(nextBtn, base);
 
             return null;
         }
@@ -343,49 +355,94 @@ async function main() {
                         const jsonLd = extractProductFromJsonLd($);
 
                         // Extract from HTML with Geizhals-specific selectors (prioritize precise over generic)
-                        const productName = $('h1.variant__header__headline, h1.product__title, h1[itemprop="name"], h1').first().text().trim() || null;
+                        let productName = $('h1.variant__header__headline, h1[itemprop="name"]').first().text().trim();
+                        if (!productName) productName = $('h1').first().text().trim() || null;
                         
-                        // Description: Avoid footer/info sections - target only product description blocks
+                        // Description: Check multiple possible locations
                         let description = null;
-                        const $descBlocks = $('.variant__description__text, .product__description__content, #productDescription, [itemprop="description"]');
+                        const $descBlocks = $('#description__text, .variant__description__text, [itemprop="description"]');
                         if ($descBlocks.length > 0) {
                             description = $descBlocks.first().text().trim();
+                        }
+                        // Also try meta description
+                        if (!description || description.length < 20) {
+                            description = $('meta[name="description"]').attr('content') || null;
                         }
                         // Filter out Geizhals boilerplate text
                         if (description && (description.includes('Geizhals is an independent') || description.length < 20)) {
                             description = null;
                         }
                         
-                        const brand = $('.variant__header__manufacturer, .product__brand, [itemprop="brand"], meta[property="product:brand"]').first().text().trim() || $('.variant__header__manufacturer').attr('content') || null;
-                        const $img = $('img.variant__header__image, img.product__image, img[itemprop="image"]').first();
-                        const image = $img.attr('src') || $img.attr('data-src') || $img.attr('data-lazy') || null;
+                        // Brand: multiple strategies
+                        let brand = $('.variant__header__manufacturer a, .variant__header__manufacturer').first().text().trim();
+                        if (!brand) brand = $('[itemprop="brand"] [itemprop="name"], [itemprop="brand"]').first().text().trim() || null;
+                        
+                        // Image: check multiple attributes
+                        const $img = $('img.variant__header__image, img[itemprop="image"], .variant__header img').first();
+                        let image = $img.attr('data-src') || $img.attr('src') || $img.attr('data-lazy') || null;
+                        if (!image) {
+                            image = $('meta[property="og:image"]').attr('content') || null;
+                        }
 
-                        const priceText = $('.gh_price, .variant__header__price, .product__price, [itemprop="price"]').first().text().trim();
+                        // Price: try multiple selectors
+                        const priceText = $('.gh_price, .variant__header__price, [itemprop="price"]').first().text().trim();
                         const price = parsePrice(priceText);
+
+                        // SKU/EAN: Try multiple sources
+                        let sku = null;
+                        const $eanEl = $('.variant__header__ean, [itemprop="sku"], [itemprop="gtin"], [itemprop="productID"]').first();
+                        if ($eanEl.length > 0) {
+                            sku = $eanEl.text().trim().replace(/^(EAN|SKU|GTIN):\s*/i, '') || null;
+                        }
 
                         // Rating: Target PRODUCT ratings only (not merchant/shop ratings)
                         let rating = null;
                         let reviewCount = null;
-                        const $ratingBlock = $('[itemprop="aggregateRating"], .variant__rating, .product__rating').first();
-                        if ($ratingBlock.length > 0) {
-                            const ratingText = $ratingBlock.find('[itemprop="ratingValue"], .variant__rating__value').text().trim();
+                        
+                        // Try itemprop first (most reliable)
+                        const $ratingValue = $('[itemprop="ratingValue"]').first();
+                        if ($ratingValue.length > 0) {
+                            rating = parseFloat($ratingValue.text().trim().replace(',', '.')) || null;
+                        }
+                        const $reviewCount = $('[itemprop="reviewCount"]').first();
+                        if ($reviewCount.length > 0) {
+                            reviewCount = parseInt($reviewCount.text().trim().replace(/\D/g, '')) || null;
+                        }
+                        
+                        // Fallback: check variant__rating block
+                        if (!rating) {
+                            const ratingText = $('.variant__rating__value, .rating__value').first().text().trim();
                             rating = ratingText ? parseFloat(ratingText.replace(',', '.')) : null;
-                            const reviewText = $ratingBlock.find('[itemprop="reviewCount"], .variant__rating__count').text().trim();
+                        }
+                        if (!reviewCount) {
+                            const reviewText = $('.variant__rating__count, .rating__count').first().text().trim();
                             reviewCount = reviewText ? parseInt(reviewText.replace(/\D/g, '')) : null;
                         }
 
                         // Extract specifications (product features)
                         const specifications = {};
-                        $('.variant__specs li, .product__specs__item, .specs__item, [itemtype*="PropertyValue"]').each((_, spec) => {
+                        
+                        // Try structured data first
+                        $('[itemtype*="PropertyValue"]').each((_, prop) => {
+                            const $prop = $(prop);
+                            const key = $prop.find('[itemprop="name"]').text().trim();
+                            const value = $prop.find('[itemprop="value"]').text().trim();
+                            if (key && value) {
+                                specifications[key] = value;
+                            }
+                        });
+                        
+                        // Also parse from variant specs list
+                        $('.variant__specs li, .variant__specs__item').each((_, spec) => {
                             const $spec = $(spec);
-                            const text = $spec.text().trim();
-                            // Match "Label: Value" or "Label • Value" patterns
-                            const match = text.match(/^([^:•]+)[:|•]\s*(.+)$/);
+                            let text = $spec.text().trim();
+                            // Match "Label: Value" patterns
+                            const match = text.match(/^([^:]+):\s*(.+)$/);
                             if (match) {
                                 const key = match[1].trim();
                                 const value = match[2].trim();
                                 // Skip if it looks like merchant/shop info
-                                if (!key.match(/shop|merchant|vendor|rating|review/i)) {
+                                if (!key.match(/shop|merchant|vendor|rating|review|preis|price/i)) {
                                     specifications[key] = value;
                                 }
                             }
@@ -395,25 +452,34 @@ async function main() {
                         const offers = [];
                         const seenMerchants = new Set();
                         
-                        // Target specific offer containers (not general class wildcards)
-                        $('.offerlist__item, .merchant-list__item, .offer-row, tr.offer').each((_, offer) => {
+                        // Target Geizhals offer list items
+                        $('.offer__item, .offerlist__item, tr[class*="offer"]').each((_, offer) => {
                             try {
                                 const $offer = $(offer);
                                 
-                                // Extract merchant name (avoid rating/info text)
-                                let merchantName = $offer.find('.offerlist__shopinfo__name, .merchant__name, .shop-name a').first().text().trim();
+                                // Extract merchant name - try multiple selectors
+                                let merchantName = $offer.find('.offer__merchant-name, .offerlist__shopinfo__name a').first().text().trim();
                                 if (!merchantName) {
-                                    merchantName = $offer.find('a[class*="shop"]').first().text().trim();
+                                    merchantName = $offer.find('a[href*="/gh.html"], a[href*="/go.html"]').first().text().trim();
+                                }
+                                if (!merchantName) {
+                                    merchantName = $offer.find('.shop-name, .merchant-name').first().text().trim();
                                 }
                                 
-                                // Extract price
-                                const offerPrice = $offer.find('.offerlist__price, .offer__price, .price').first().text().trim();
+                                // Extract price - look for price in offer row
+                                let offerPrice = $offer.find('.offer__price, .gh_price').first().text().trim();
+                                if (!offerPrice) {
+                                    offerPrice = $offer.find('td:nth-child(2), .price').first().text().trim();
+                                }
                                 const parsedPrice = parsePrice(offerPrice);
 
+                                // Clean merchant name
+                                merchantName = merchantName.replace(/\s*\([^)]*\)\s*/g, '').trim();
+
                                 // Only add if valid and unique merchant
-                                if (merchantName && parsedPrice && !seenMerchants.has(merchantName)) {
+                                if (merchantName && merchantName.length > 1 && parsedPrice && !seenMerchants.has(merchantName)) {
                                     // Filter out non-merchant text (ratings, info, etc.)
-                                    if (!merchantName.match(/rating|bewertung|information|agb|^[0-9.]+$/i)) {
+                                    if (!merchantName.match(/rating|bewertung|information|agb|^[0-9.,€$]+$/i)) {
                                         offers.push({
                                             merchant: merchantName,
                                             price: parsedPrice,
@@ -435,7 +501,7 @@ async function main() {
                             description: jsonLd?.description || description,
                             brand: jsonLd?.brand || brand,
                             image: jsonLd?.image || (image ? toAbs(image, request.url) : null),
-                            sku: jsonLd?.sku || null,
+                            sku: jsonLd?.sku || sku,
                             product_id: extractProductId(request.url),
                             price: jsonLd?.offers?.price || price,
                             currency: jsonLd?.offers?.currency || 'EUR',
@@ -453,7 +519,17 @@ async function main() {
                         if (validateProduct(item)) {
                             await Dataset.pushData(item);
                             saved++;
-                            crawlerLog.info(`✅ Saved: ${item.name} (${saved}/${RESULTS_WANTED})`);
+                            // Log extracted fields for debugging
+                            const fieldsExtracted = [];
+                            if (item.description) fieldsExtracted.push('desc');
+                            if (item.brand) fieldsExtracted.push('brand');
+                            if (item.image) fieldsExtracted.push('img');
+                            if (item.sku) fieldsExtracted.push('sku');
+                            if (item.rating) fieldsExtracted.push('rating');
+                            if (item.specifications) fieldsExtracted.push('specs');
+                            if (item.offers?.length) fieldsExtracted.push(`${item.offers.length}offers`);
+                            
+                            crawlerLog.info(`✅ Saved: ${item.name} [${fieldsExtracted.join(', ') || 'basic'}] (${saved}/${RESULTS_WANTED})`);
                         } else {
                             crawlerLog.warning(`⚠️ Invalid product data for ${request.url}`);
                         }
