@@ -1,0 +1,87 @@
+{
+  "title": "Geizhals Price Comparison Scraper",
+  "description": "Scrape product listings, prices, specifications, and merchant offers from Geizhals.eu price comparison platform. Provide category or search query to start scraping.",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "startUrl": {
+      "title": "Start URL",
+      "type": "string",
+      "description": "Start scraping from a specific Geizhals URL. If provided, this will be used instead of category/search parameters.",
+      "editor": "textfield",
+      "example": "https://geizhals.eu/?cat=hvent"
+    },
+    "category": {
+      "title": "Category (if not using Start URL)",
+      "type": "string",
+      "description": "Geizhals category code (e.g., 'hvent' for ventilators, 'nb' for notebooks). Find category codes in Geizhals URLs.",
+      "editor": "textfield",
+      "prefill": "hvent",
+      "default": "hvent"
+    },
+    "searchQuery": {
+      "title": "Search Query (optional)",
+      "type": "string",
+      "description": "Product search keyword to filter results within the category (e.g., 'Dyson', 'Samsung').",
+      "editor": "textfield"
+    },
+    "country": {
+      "title": "Geizhals Domain",
+      "type": "string",
+      "description": "Select which Geizhals domain to scrape from (EU, Germany, or Austria).",
+      "editor": "select",
+      "default": "eu",
+      "enum": ["eu", "de", "at"],
+      "enumTitles": ["Geizhals.eu (Europe)", "Geizhals.de (Germany)", "Geizhals.at (Austria)"]
+    },
+    "minPrice": {
+      "title": "Minimum Price (optional)",
+      "type": "number",
+      "description": "Filter products with price greater than or equal to this value (in EUR).",
+      "editor": "number",
+      "minimum": 0
+    },
+    "maxPrice": {
+      "title": "Maximum Price (optional)",
+      "type": "number",
+      "description": "Filter products with price less than or equal to this value (in EUR).",
+      "editor": "number",
+      "minimum": 0
+    },
+    "collectDetails": {
+      "title": "Collect Product Details",
+      "type": "boolean",
+      "description": "If enabled, scraper opens product detail pages to extract full specifications, offers, and ratings. Disable for faster scraping of basic listing data.",
+      "editor": "checkbox",
+      "default": true
+    },
+    "results_wanted": {
+      "title": "Maximum Number of Products",
+      "type": "integer",
+      "description": "Maximum number of products to collect. Leave empty or set to 0 to collect all available products.",
+      "minimum": 1,
+      "default": 100,
+      "editor": "number"
+    },
+    "max_pages": {
+      "title": "Maximum Number of Pages",
+      "type": "integer",
+      "description": "Safety limit on the number of listing pages to visit (Geizhals uses pagination).",
+      "minimum": 1,
+      "editor": "number",
+      "default": 20
+    },
+    "proxyConfiguration": {
+      "title": "Proxy Configuration",
+      "type": "object",
+      "description": "Proxy settings to avoid rate limiting and blocks. Residential proxies recommended for reliable scraping.",
+      "editor": "proxy",
+      "default": {
+        "useApifyProxy": true,
+        "apifyProxyGroups": ["RESIDENTIAL"]
+      }
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}

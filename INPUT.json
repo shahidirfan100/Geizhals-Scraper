@@ -1,0 +1,12 @@
+{
+  "category": "hvent",
+  "searchQuery": "",
+  "results_wanted": 50,
+  "max_pages": 5,
+  "collectDetails": true,
+  "country": "eu",
+  "proxyConfiguration": {
+    "useApifyProxy": true,
+    "apifyProxyGroups": ["RESIDENTIAL"]
+  }
+}

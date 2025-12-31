@@ -1,0 +1,19 @@
+{
+    "actorOutputSchemaVersion": 1,
+    "title": "Geizhals Product Data Output",
+    "description": "Structured product data including prices, specifications, and merchant offers from Geizhals price comparison platform",
+    "properties": {
+        "overview": {
+            "type": "string",
+            "title": "Product Overview",
+            "description": "Complete product listings with pricing and merchant information",
+            "template": "{{links.apiDefaultDatasetUrl}}/items?view=overview"
+        },
+        "dataset": {
+            "type": "string",
+            "title": "Full Dataset",
+            "description": "All scraped products in JSON format",
+            "template": "{{links.apiDefaultDatasetUrl}}/items"
+        }
+    }
+}
