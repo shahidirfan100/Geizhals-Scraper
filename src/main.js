@@ -151,10 +151,14 @@ async function main() {
             $('.productlist__item a[href*="-a"], .listview__item a[href*="-a"]').each((_, a) => {
                 const href = $(a).attr('href');
                 if (href && /-a\d+\.html/i.test(href)) {
-                    const abs = toAbs(href, base);
-                    if (abs && !seenUrls.has(abs)) {
-                        links.add(abs);
-                        seenUrls.add(abs);
+                    let abs = toAbs(href, base);
+                    // Clean URL: remove hloc parameters that trigger blocking
+                    if (abs) {
+                        abs = abs.split('?')[0]; // Remove all query parameters
+                        if (!seenUrls.has(abs)) {
+                            links.add(abs);
+                            seenUrls.add(abs);
+                        }
                     }
                 }
             });
@@ -164,10 +168,13 @@ async function main() {
                 $('a[href]').each((_, a) => {
                     const href = $(a).attr('href');
                     if (href && /-a\d+\.html/i.test(href)) {
-                        const abs = toAbs(href, base);
-                        if (abs && !seenUrls.has(abs)) {
-                            links.add(abs);
-                            seenUrls.add(abs);
+                        let abs = toAbs(href, base);
+                        if (abs) {
+                            abs = abs.split('?')[0]; // Remove query parameters
+                            if (!seenUrls.has(abs)) {
+                                links.add(abs);
+                                seenUrls.add(abs);
+                            }
                         }
                     }
                 });
@@ -236,9 +243,9 @@ async function main() {
                     maxUsageCount: 10, // Rotate sessions more frequently
                 },
             },
-            maxConcurrency: 2, // Reduced from 5 for better stealth
+            maxConcurrency: 3, // Increased from 2 for better speed
             minConcurrency: 1,
-            requestHandlerTimeoutSecs: 90,
+            requestHandlerTimeoutSecs: 60, // Reduced from 90 for faster failures
 
             // Enhanced stealth with User-Agent rotation and delays
             preNavigationHooks: [
