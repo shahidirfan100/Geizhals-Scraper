@@ -9,7 +9,6 @@ async function main() {
     try {
         const input = (await Actor.getInput()) || {};
         const {
-            searchQuery = '',
             results_wanted: RESULTS_WANTED_RAW = 20,
             max_pages: MAX_PAGES_RAW = 20,
             collectDetails = true,
@@ -19,18 +18,15 @@ async function main() {
             proxyConfiguration,
             minPrice,
             maxPrice,
-            country = 'eu',
         } = input;
 
         const RESULTS_WANTED = Number.isFinite(+RESULTS_WANTED_RAW) ? Math.max(1, +RESULTS_WANTED_RAW) : Number.MAX_SAFE_INTEGER;
         const MAX_PAGES = Number.isFinite(+MAX_PAGES_RAW) ? Math.max(1, +MAX_PAGES_RAW) : 20;
 
         log.info('🚀 Starting Geizhals scraper', {
-            searchQuery,
             results_wanted: RESULTS_WANTED,
             max_pages: MAX_PAGES,
             collectDetails,
-            country,
         });
 
         const toAbs = (href, base = 'https://geizhals.eu') => {
@@ -231,19 +227,35 @@ async function main() {
 
         const crawler = new CheerioCrawler({
             proxyConfiguration: proxyConf,
-            maxRequestRetries: 5,
+            maxRequestRetries: 3, // Reduced to fail faster on blocks
             useSessionPool: true,
             persistCookiesPerSession: true,
-            maxConcurrency: 5,
+            sessionPoolOptions: {
+                maxPoolSize: 20,
+                sessionOptions: {
+                    maxUsageCount: 10, // Rotate sessions more frequently
+                },
+            },
+            maxConcurrency: 2, // Reduced from 5 for better stealth
             minConcurrency: 1,
             requestHandlerTimeoutSecs: 90,
 
-            // Stealth headers
+            // Enhanced stealth with User-Agent rotation and delays
             preNavigationHooks: [
                 async ({ request, session }, gotOptions) => {
+                    // Rotate User-Agent per request
+                    const userAgents = [
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+                        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    ];
+                    const randomUA = userAgents[Math.floor(Math.random() * userAgents.length)];
+
                     gotOptions.headers = {
                         ...gotOptions.headers,
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+                        'User-Agent': randomUA,
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
                         'Accept-Language': 'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7',
                         'Accept-Encoding': 'gzip, deflate, br',
                         'Cache-Control': 'max-age=0',
@@ -252,12 +264,19 @@ async function main() {
                         'Sec-Fetch-Mode': 'navigate',
                         'Sec-Fetch-Site': 'none',
                         'Sec-Fetch-User': '?1',
+                        'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+                        'Sec-Ch-Ua-Mobile': '?0',
+                        'Sec-Ch-Ua-Platform': '"Windows"',
                     };
 
                     // Add referer for non-initial requests
                     if (request.userData?.referrer) {
                         gotOptions.headers['Referer'] = request.userData.referrer;
                     }
+
+                    // Add random delay (1-3 seconds) to mimic human behavior
+                    const delay = 1000 + Math.random() * 2000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
                 },
             ],
 

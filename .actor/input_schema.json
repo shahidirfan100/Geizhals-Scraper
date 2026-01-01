@@ -7,33 +7,10 @@
     "startUrl": {
       "title": "Start URL",
       "type": "string",
-      "description": "Geizhals URL to start scraping from (e.g., https://geizhals.eu/?cat=hvent for ventilators, https://geizhals.de/?cat=nb for notebooks). Find category codes in Geizhals URLs.",
+      "description": "Geizhals URL to start scraping from. Examples: https://geizhals.eu/?cat=hvent (category), https://geizhals.eu/?fs=dyson (search), https://geizhals.de/?cat=nb (German notebooks).",
       "editor": "textfield",
       "example": "https://geizhals.eu/?cat=hvent",
       "prefill": "https://geizhals.eu/?cat=hvent"
-    },
-    "searchQuery": {
-      "title": "Search Query (optional)",
-      "type": "string",
-      "description": "Product search keyword to filter results (e.g., 'Dyson', 'Samsung'). Will be added to the start URL.",
-      "editor": "textfield"
-    },
-    "country": {
-      "title": "Geizhals Domain",
-      "type": "string",
-      "description": "Select which Geizhals domain to scrape from (EU, Germany, or Austria).",
-      "editor": "select",
-      "default": "eu",
-      "enum": [
-        "eu",
-        "de",
-        "at"
-      ],
-      "enumTitles": [
-        "Geizhals.eu (Europe)",
-        "Geizhals.de (Germany)",
-        "Geizhals.at (Austria)"
-      ]
     },
     "minPrice": {
       "title": "Minimum Price (optional)",
@@ -85,6 +62,8 @@
       }
     }
   },
-  "required": [],
+  "required": [
+    "startUrl"
+  ],
   "additionalProperties": false
 }
