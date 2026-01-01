@@ -203,7 +203,6 @@ async function main() {
         // Validate product data
         function validateProduct(product) {
             if (!product.name || product.name.length < 3) {
-                log.softFail('Product missing valid name', { product });
                 return false;
             }
             return true;
@@ -245,17 +244,21 @@ async function main() {
                 const label = request.userData?.label || 'LIST';
                 const pageNo = request.userData?.pageNo || 1;
 
-                crawlerLog.debug(`Processing ${label} page ${pageNo}: ${request.url}`);
+                // Early exit if target already reached
+                if (saved >= RESULTS_WANTED) {
+                    crawlerLog.debug(`Target reached (${saved}/${RESULTS_WANTED}), skipping request`);
+                    return;
+                }
 
                 if (label === 'LIST') {
                     pagesVisited++;
                     const links = findProductLinks($, request.url);
-                    crawlerLog.info(`📄 LIST page ${pageNo} -> found ${links.length} products (${saved}/${RESULTS_WANTED} collected)`);
 
-                    if (links.length === 0) {
-                        crawlerLog.warning(`⚠️ No product links found on page ${pageNo}. Selectors may need adjustment.`);
-                        crawlerLog.debug(`Page title: ${$('title').text()}`);
-                        crawlerLog.debug(`Sample content: ${$.root().text().substring(0, 500)}`);
+                    // Only log important events
+                    if (links.length > 0) {
+                        crawlerLog.info(`📄 Page ${pageNo}: ${links.length} products found`);
+                    } else {
+                        crawlerLog.info(`📍 No more products on page ${pageNo} - stopping pagination`);
                     }
 
                     if (collectDetails && links.length > 0) {
@@ -266,7 +269,7 @@ async function main() {
                                 urls: toEnqueue,
                                 userData: { label: 'DETAIL', referrer: request.url },
                             });
-                            crawlerLog.info(`➕ Enqueued ${toEnqueue.length} detail pages`);
+                            crawlerLog.info(`➕ Queued ${toEnqueue.length} details`);
                         }
                     } else if (!collectDetails && links.length > 0) {
                         // Quick scrape from listing page - clean data extraction
@@ -328,36 +331,37 @@ async function main() {
                         if (products.length) {
                             await Dataset.pushData(products);
                             saved += products.length;
-                            crawlerLog.info(`✅ Saved ${products.length} products from listing (total: ${saved})`);
+                            crawlerLog.info(`✅ Saved ${products.length} products (${saved}/${RESULTS_WANTED})`);
                         }
                     }
 
-                    // Pagination
-                    if (saved < RESULTS_WANTED && pageNo < MAX_PAGES) {
+                    // Pagination - only continue if we haven't reached target AND found products on this page
+                    const needMore = saved < RESULTS_WANTED;
+                    const hasProducts = links.length > 0;
+                    const canPaginate = pageNo < MAX_PAGES;
+
+                    if (needMore && hasProducts && canPaginate) {
                         const next = findNextPage($, request.url, pageNo);
                         if (next) {
-                            crawlerLog.info(`➡️ Enqueueing page ${pageNo + 1}: ${next}`);
                             await enqueueLinks({
                                 urls: [next],
                                 userData: { label: 'LIST', pageNo: pageNo + 1, referrer: request.url },
                             });
-                        } else {
-                            crawlerLog.info('📍 Pagination complete - no more pages found');
                         }
                     } else {
-                        if (saved >= RESULTS_WANTED) {
-                            crawlerLog.info(`✅ Target reached: ${saved}/${RESULTS_WANTED} products`);
-                        }
-                        if (pageNo >= MAX_PAGES) {
-                            crawlerLog.info(`📍 Max pages reached: ${pageNo}/${MAX_PAGES}`);
+                        // Stop pagination
+                        if (!needMore) {
+                            crawlerLog.info(`✅ Target reached: ${saved}/${RESULTS_WANTED}`);
+                        } else if (!hasProducts) {
+                            crawlerLog.info(`📍 No more products - stopping`);
                         }
                     }
                     return;
                 }
 
                 if (label === 'DETAIL') {
+                    // Double-check target not reached (race condition)
                     if (saved >= RESULTS_WANTED) {
-                        crawlerLog.debug('Skipping detail page - target reached');
                         return;
                     }
 
@@ -578,7 +582,7 @@ async function main() {
                             if (item.specifications) fieldsExtracted.push('specs');
                             if (item.offers?.length) fieldsExtracted.push(`${item.offers.length}offers`);
 
-                            crawlerLog.info(`✅ Saved: ${item.name} [${fieldsExtracted.join(', ') || 'basic'}] (${saved}/${RESULTS_WANTED})`);
+                            crawlerLog.info(`✅ ${item.brand || item.name.substring(0, 25)} (${saved}/${RESULTS_WANTED})`);
                         } else {
                             crawlerLog.warning(`⚠️ Invalid product data for ${request.url}`);
                         }
