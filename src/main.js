@@ -49,7 +49,28 @@ async function main() {
         if (url) initial.push(url);
 
         if (!initial.length) {
-            throw new Error('No start URL provided. Please provide a Geizhals URL (e.g., https://geizhals.eu/?cat=hvent)');
+            // Build URL from searchQuery if provided
+            const domain = country === 'at' ? 'geizhals.at' : country === 'de' ? 'geizhals.de' : 'geizhals.eu';
+
+            if (searchQuery) {
+                let builtUrl = `https://${domain}/?fs=${encodeURIComponent(searchQuery)}`;
+
+                // Add price filters if provided
+                if (minPrice || maxPrice) {
+                    const u = new URL(builtUrl);
+                    if (minPrice) {
+                        u.searchParams.set('v', 'e');
+                        u.searchParams.set('plz', String(minPrice));
+                    }
+                    if (maxPrice) u.searchParams.set('plh', String(maxPrice));
+                    builtUrl = u.href;
+                }
+
+                log.info(`🔍 Searching for: "${searchQuery}"`);
+                initial.push(builtUrl);
+            } else {
+                throw new Error('No start URL or search query provided. Please provide either startUrl or searchQuery.');
+            }
         }
 
         log.info(`📍 Start URL(s): ${initial.join(', ')}`);
