@@ -291,12 +291,6 @@ async function main() {
                 const label = request.userData?.label || 'LIST';
                 const pageNo = request.userData?.pageNo || 1;
 
-                // Early exit if target already reached
-                if (saved >= RESULTS_WANTED) {
-                    crawlerLog.debug(`Target reached (${saved}/${RESULTS_WANTED}), skipping request`);
-                    return;
-                }
-
                 if (label === 'LIST') {
                     pagesVisited++;
                     const links = findProductLinks($, request.url);
@@ -434,10 +428,18 @@ async function main() {
                             description = null;
                         }
 
-                        // Brand: multiple strategies (prioritize specific selectors)
-                        let brand = $('.variant__header__manufacturer-info-link').first().text().trim();
-                        if (!brand) brand = $('.variant__header__manufacturer a, .variant__header__manufacturer').first().text().trim();
-                        if (!brand) brand = $('[itemprop="brand"] [itemprop="name"], [itemprop="brand"]').first().text().trim() || null;
+                        // Brand: Parse first word from product title
+                        let brand = null;
+                        if (productName) {
+                            const firstWord = productName.trim().split(/\s+/)[0];
+                            if (firstWord && firstWord.length > 1 && !/^(info|beim|hersteller)$/i.test(firstWord)) {
+                                brand = firstWord;
+                            }
+                        }
+                        if (!brand) {
+                            const brandText = $('[itemprop="brand"]').text().trim();
+                            if (brandText && !brandText.toLowerCase().includes('info')) brand = brandText;
+                        }
 
                         // Image: check multiple attributes
                         const $img = $('img.variant__header__image, img[itemprop="image"], .variant__header img').first();
