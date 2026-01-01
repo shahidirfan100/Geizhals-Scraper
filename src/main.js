@@ -9,9 +9,8 @@ async function main() {
     try {
         const input = (await Actor.getInput()) || {};
         const {
-            category = 'hvent',
             searchQuery = '',
-            results_wanted: RESULTS_WANTED_RAW = 100,
+            results_wanted: RESULTS_WANTED_RAW = 20,
             max_pages: MAX_PAGES_RAW = 20,
             collectDetails = true,
             startUrl,
@@ -27,7 +26,6 @@ async function main() {
         const MAX_PAGES = Number.isFinite(+MAX_PAGES_RAW) ? Math.max(1, +MAX_PAGES_RAW) : 20;
 
         log.info('🚀 Starting Geizhals scraper', {
-            category,
             searchQuery,
             results_wanted: RESULTS_WANTED,
             max_pages: MAX_PAGES,
@@ -43,27 +41,15 @@ async function main() {
             }
         };
 
-        const buildStartUrl = (cat, query, minP, maxP) => {
-            const domain = country === 'at' ? 'geizhals.at' : country === 'de' ? 'geizhals.de' : 'geizhals.eu';
-            const u = new URL(`https://${domain}/`);
-            if (cat) u.searchParams.set('cat', String(cat).trim());
-            if (query) u.searchParams.set('fs', String(query).trim());
-            if (minP) {
-                u.searchParams.set('v', 'e');
-                u.searchParams.set('plz', String(minP));
-            }
-            if (maxP) u.searchParams.set('plh', String(maxP));
-            return u.href;
-        };
-
         const initial = [];
         if (Array.isArray(startUrls) && startUrls.length) {
             initial.push(...startUrls);
         }
         if (startUrl) initial.push(startUrl);
         if (url) initial.push(url);
+
         if (!initial.length) {
-            initial.push(buildStartUrl(category, searchQuery, minPrice, maxPrice));
+            throw new Error('No start URL provided. Please provide a Geizhals URL (e.g., https://geizhals.eu/?cat=hvent)');
         }
 
         log.info(`📍 Start URL(s): ${initial.join(', ')}`);
@@ -91,20 +77,44 @@ async function main() {
                         if (!e) continue;
                         const t = e['@type'] || e.type;
                         if (t === 'Product' || (Array.isArray(t) && t.includes('Product'))) {
-                            return {
-                                name: e.name || null,
-                                description: e.description || null,
-                                brand: e.brand?.name || null,
-                                image: e.image || null,
-                                sku: e.sku || e.mpn || null,
-                                offers: e.offers ? {
+                            // Extract brand - handle both object and string formats
+                            let brand = null;
+                            if (e.brand) {
+                                brand = typeof e.brand === 'object' ? e.brand.name : e.brand;
+                            }
+
+                            // Extract offers - Geizhals uses nested offers.offers array
+                            let offersData = null;
+                            let merchantOffers = [];
+                            if (e.offers) {
+                                // Check for nested offers array (Geizhals structure)
+                                if (Array.isArray(e.offers.offers)) {
+                                    merchantOffers = e.offers.offers.slice(0, 10).map(offer => ({
+                                        merchant: offer.seller?.name || null,
+                                        price: parseFloat(offer.price) || null,
+                                        currency: offer.priceCurrency || 'EUR',
+                                        availability: offer.availability || null,
+                                    })).filter(o => o.merchant && o.price);
+                                }
+                                // Fallback: single offer object
+                                offersData = {
                                     price: e.offers.price || e.offers.lowPrice || null,
                                     currency: e.offers.priceCurrency || 'EUR',
                                     availability: e.offers.availability || null,
-                                } : null,
+                                };
+                            }
+
+                            return {
+                                name: e.name || null,
+                                description: e.description || null,
+                                brand,
+                                image: e.image || null,
+                                sku: e.mpn || e.sku || null, // Prioritize MPN (Geizhals uses this)
+                                offers: offersData,
+                                merchantOffers: merchantOffers.length > 0 ? merchantOffers : null,
                                 aggregateRating: e.aggregateRating ? {
-                                    ratingValue: e.aggregateRating.ratingValue || null,
-                                    reviewCount: e.aggregateRating.reviewCount || null,
+                                    ratingValue: parseFloat(e.aggregateRating.ratingValue) || null,
+                                    reviewCount: parseInt(e.aggregateRating.reviewCount) || null,
                                 } : null,
                             };
                         }
@@ -155,10 +165,10 @@ async function main() {
             let nextBtn = $('.xfsearchlink a, .listnavig a, a.listnavig__link').filter((_, el) => {
                 const text = $(el).text().trim().toLowerCase();
                 const title = $(el).attr('title')?.toLowerCase() || '';
-                return text === 'weiter' || title.includes('weiter') || text === '»' || 
-                       text.includes('nächste') || text.includes('next');
+                return text === 'weiter' || title.includes('weiter') || text === '»' ||
+                    text.includes('nächste') || text.includes('next');
             }).first();
-            
+
             if (nextBtn.length > 0) {
                 const href = nextBtn.attr('href');
                 if (href) return toAbs(href, base);
@@ -207,7 +217,7 @@ async function main() {
             maxConcurrency: 5,
             minConcurrency: 1,
             requestHandlerTimeoutSecs: 90,
-            
+
             // Stealth headers
             preNavigationHooks: [
                 async ({ request, session }, gotOptions) => {
@@ -273,12 +283,12 @@ async function main() {
                         $items.slice(0, remaining).each((_, el) => {
                             try {
                                 const $el = $(el);
-                                
+
                                 // Extract product link and name
                                 const $link = $el.find('a.productlist__link, a[href*="-a"]').first();
                                 const productLink = $link.attr('href');
                                 let productName = $link.attr('title') || $link.text().trim();
-                                
+
                                 // Fallback to structured elements if link text is empty
                                 if (!productName || productName.length < 3) {
                                     productName = $el.find('.productlist__title, h2, h3, [class*="product-name"]').first().text().trim();
@@ -290,8 +300,8 @@ async function main() {
 
                                 // Extract basic info if available (optional for listing mode)
                                 const brand = $el.find('.productlist__manufacturer, [class*="brand"]').first().text().trim() || null;
-                                const imageUrl = $el.find('img.productlist__image, img[data-src]').first().attr('data-src') || 
-                                               $el.find('img').first().attr('src') || null;
+                                const imageUrl = $el.find('img.productlist__image, img[data-src]').first().attr('data-src') ||
+                                    $el.find('img').first().attr('src') || null;
 
                                 if (productLink && productName && productName.length > 3) {
                                     const product = {
@@ -357,7 +367,7 @@ async function main() {
                         // Extract from HTML with Geizhals-specific selectors (prioritize precise over generic)
                         let productName = $('h1.variant__header__headline, h1[itemprop="name"]').first().text().trim();
                         if (!productName) productName = $('h1').first().text().trim() || null;
-                        
+
                         // Description: Check multiple possible locations
                         let description = null;
                         const $descBlocks = $('#description__text, .variant__description__text, [itemprop="description"]');
@@ -372,11 +382,12 @@ async function main() {
                         if (description && (description.includes('Geizhals is an independent') || description.length < 20)) {
                             description = null;
                         }
-                        
-                        // Brand: multiple strategies
-                        let brand = $('.variant__header__manufacturer a, .variant__header__manufacturer').first().text().trim();
+
+                        // Brand: multiple strategies (prioritize specific selectors)
+                        let brand = $('.variant__header__manufacturer-info-link').first().text().trim();
+                        if (!brand) brand = $('.variant__header__manufacturer a, .variant__header__manufacturer').first().text().trim();
                         if (!brand) brand = $('[itemprop="brand"] [itemprop="name"], [itemprop="brand"]').first().text().trim() || null;
-                        
+
                         // Image: check multiple attributes
                         const $img = $('img.variant__header__image, img[itemprop="image"], .variant__header img').first();
                         let image = $img.attr('data-src') || $img.attr('src') || $img.attr('data-lazy') || null;
@@ -388,40 +399,64 @@ async function main() {
                         const priceText = $('.gh_price, .variant__header__price, [itemprop="price"]').first().text().trim();
                         const price = parsePrice(priceText);
 
-                        // SKU/EAN: Try multiple sources
+                        // SKU/MPN: Try multiple sources (Geizhals uses MPN as primary identifier)
                         let sku = null;
-                        const $eanEl = $('.variant__header__ean, [itemprop="sku"], [itemprop="gtin"], [itemprop="productID"]').first();
-                        if ($eanEl.length > 0) {
-                            sku = $eanEl.text().trim().replace(/^(EAN|SKU|GTIN):\s*/i, '') || null;
+                        const $mpnEl = $('.variant__header__item-number, .variant__header__mpn-showroom, .variant__header__ean, [itemprop="mpn"], [itemprop="sku"], [itemprop="gtin"]').first();
+                        if ($mpnEl.length > 0) {
+                            sku = $mpnEl.text().trim().replace(/^(EAN|SKU|GTIN|MPN|Artikelnummer):\s*/i, '') || null;
+                        }
+                        // Clean up any remaining whitespace or prefixes
+                        if (sku) {
+                            sku = sku.replace(/\s+/g, ' ').trim();
                         }
 
                         // Rating: Target PRODUCT ratings only (not merchant/shop ratings)
                         let rating = null;
                         let reviewCount = null;
-                        
-                        // Try itemprop first (most reliable)
-                        const $ratingValue = $('[itemprop="ratingValue"]').first();
-                        if ($ratingValue.length > 0) {
-                            rating = parseFloat($ratingValue.text().trim().replace(',', '.')) || null;
+
+                        // Try Geizhals-specific selectors first
+                        const $ratingScore = $('.gh_stars__rating__score').first();
+                        if ($ratingScore.length > 0) {
+                            rating = parseFloat($ratingScore.text().trim().replace(',', '.')) || null;
                         }
-                        const $reviewCount = $('[itemprop="reviewCount"]').first();
-                        if ($reviewCount.length > 0) {
-                            reviewCount = parseInt($reviewCount.text().trim().replace(/\D/g, '')) || null;
+                        const $ratingCount = $('.gh_stars__rating__count').first();
+                        if ($ratingCount.length > 0) {
+                            const countText = $ratingCount.text().trim();
+                            reviewCount = parseInt(countText.replace(/\D/g, '')) || null;
                         }
-                        
-                        // Fallback: check variant__rating block
+
+                        // Fallback: Try itemprop (most reliable)
                         if (!rating) {
-                            const ratingText = $('.variant__rating__value, .rating__value').first().text().trim();
-                            rating = ratingText ? parseFloat(ratingText.replace(',', '.')) : null;
+                            const $ratingValue = $('[itemprop="ratingValue"]').first();
+                            if ($ratingValue.length > 0) {
+                                rating = parseFloat($ratingValue.text().trim().replace(',', '.')) || null;
+                            }
                         }
                         if (!reviewCount) {
-                            const reviewText = $('.variant__rating__count, .rating__count').first().text().trim();
-                            reviewCount = reviewText ? parseInt(reviewText.replace(/\D/g, '')) : null;
+                            const $reviewCountEl = $('[itemprop="reviewCount"]').first();
+                            if ($reviewCountEl.length > 0) {
+                                reviewCount = parseInt($reviewCountEl.text().trim().replace(/\D/g, '')) || null;
+                            }
+                        }
+
+                        // Additional fallback: stars-rating-label with aria-hidden
+                        if (!rating) {
+                            const $ariaRating = $('.stars-rating-label [aria-hidden="true"]').first();
+                            if ($ariaRating.length > 0) {
+                                rating = parseFloat($ariaRating.text().trim().replace(',', '.')) || null;
+                            }
+                        }
+                        if (!reviewCount) {
+                            const $ratingLabel = $('.variant__header__rating .stars-rating-label').first().text().trim();
+                            const match = $ratingLabel.match(/(\d+)\s*(Bewertung|Review)/i);
+                            if (match) {
+                                reviewCount = parseInt(match[1]) || null;
+                            }
                         }
 
                         // Extract specifications (product features)
                         const specifications = {};
-                        
+
                         // Try structured data first
                         $('[itemtype*="PropertyValue"]').each((_, prop) => {
                             const $prop = $(prop);
@@ -431,7 +466,7 @@ async function main() {
                                 specifications[key] = value;
                             }
                         });
-                        
+
                         // Also parse from variant specs list
                         $('.variant__specs li, .variant__specs__item').each((_, spec) => {
                             const $spec = $(spec);
@@ -451,12 +486,12 @@ async function main() {
                         // Extract offers/merchants - be more selective to avoid duplicates
                         const offers = [];
                         const seenMerchants = new Set();
-                        
+
                         // Target Geizhals offer list items
                         $('.offer__item, .offerlist__item, tr[class*="offer"]').each((_, offer) => {
                             try {
                                 const $offer = $(offer);
-                                
+
                                 // Extract merchant name - try multiple selectors
                                 let merchantName = $offer.find('.offer__merchant-name, .offerlist__shopinfo__name a').first().text().trim();
                                 if (!merchantName) {
@@ -465,7 +500,7 @@ async function main() {
                                 if (!merchantName) {
                                     merchantName = $offer.find('.shop-name, .merchant-name').first().text().trim();
                                 }
-                                
+
                                 // Extract price - look for price in offer row
                                 let offerPrice = $offer.find('.offer__price, .gh_price').first().text().trim();
                                 if (!offerPrice) {
@@ -496,6 +531,20 @@ async function main() {
                         // Limit offers to top 10 to avoid data bloat
                         const topOffers = offers.slice(0, 10);
 
+                        // Merge JSON-LD merchant offers with DOM-extracted offers
+                        const allOffers = [];
+                        if (jsonLd?.merchantOffers?.length > 0) {
+                            allOffers.push(...jsonLd.merchantOffers);
+                        }
+                        // Add DOM offers if not already present
+                        for (const domOffer of topOffers) {
+                            const exists = allOffers.find(o => o.merchant === domOffer.merchant);
+                            if (!exists) {
+                                allOffers.push(domOffer);
+                            }
+                        }
+                        const finalOffers = allOffers.slice(0, 10); // Limit to top 10
+
                         const item = {
                             name: jsonLd?.name || productName,
                             description: jsonLd?.description || description,
@@ -508,9 +557,9 @@ async function main() {
                             rating: jsonLd?.aggregateRating?.ratingValue || rating,
                             review_count: jsonLd?.aggregateRating?.reviewCount || reviewCount,
                             specifications: Object.keys(specifications).length > 0 ? specifications : null,
-                            offers: topOffers.length > 0 ? topOffers : null,
-                            offers_count: topOffers.length || null,
-                            lowest_price: topOffers.length > 0 ? Math.min(...topOffers.map(o => o.price)) : price,
+                            offers: finalOffers.length > 0 ? finalOffers : null,
+                            offers_count: finalOffers.length || null,
+                            lowest_price: finalOffers.length > 0 ? Math.min(...finalOffers.map(o => o.price)) : price,
                             url: request.url,
                             scraped_from: 'detail',
                             scraped_at: new Date().toISOString(),
@@ -528,7 +577,7 @@ async function main() {
                             if (item.rating) fieldsExtracted.push('rating');
                             if (item.specifications) fieldsExtracted.push('specs');
                             if (item.offers?.length) fieldsExtracted.push(`${item.offers.length}offers`);
-                            
+
                             crawlerLog.info(`✅ Saved: ${item.name} [${fieldsExtracted.join(', ') || 'basic'}] (${saved}/${RESULTS_WANTED})`);
                         } else {
                             crawlerLog.warning(`⚠️ Invalid product data for ${request.url}`);

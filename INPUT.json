@@ -1,12 +1,14 @@
 {
-  "category": "hvent",
+  "startUrl": "https://geizhals.eu/?cat=hvent",
   "searchQuery": "",
-  "results_wanted": 50,
+  "results_wanted": 20,
   "max_pages": 5,
   "collectDetails": true,
   "country": "eu",
   "proxyConfiguration": {
     "useApifyProxy": true,
-    "apifyProxyGroups": ["RESIDENTIAL"]
+    "apifyProxyGroups": [
+      "RESIDENTIAL"
+    ]
   }
 }

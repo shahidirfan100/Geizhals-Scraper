@@ -7,22 +7,15 @@
     "startUrl": {
       "title": "Start URL",
       "type": "string",
-      "description": "Start scraping from a specific Geizhals URL. If provided, this will be used instead of category/search parameters.",
+      "description": "Geizhals URL to start scraping from (e.g., https://geizhals.eu/?cat=hvent for ventilators, https://geizhals.de/?cat=nb for notebooks). Find category codes in Geizhals URLs.",
       "editor": "textfield",
-      "example": "https://geizhals.eu/?cat=hvent"
-    },
-    "category": {
-      "title": "Category (if not using Start URL)",
-      "type": "string",
-      "description": "Geizhals category code (e.g., 'hvent' for ventilators, 'nb' for notebooks). Find category codes in Geizhals URLs.",
-      "editor": "textfield",
-      "prefill": "hvent",
-      "default": "hvent"
+      "example": "https://geizhals.eu/?cat=hvent",
+      "prefill": "https://geizhals.eu/?cat=hvent"
     },
     "searchQuery": {
       "title": "Search Query (optional)",
       "type": "string",
-      "description": "Product search keyword to filter results within the category (e.g., 'Dyson', 'Samsung').",
+      "description": "Product search keyword to filter results (e.g., 'Dyson', 'Samsung'). Will be added to the start URL.",
       "editor": "textfield"
     },
     "country": {
@@ -31,8 +24,16 @@
       "description": "Select which Geizhals domain to scrape from (EU, Germany, or Austria).",
       "editor": "select",
       "default": "eu",
-      "enum": ["eu", "de", "at"],
-      "enumTitles": ["Geizhals.eu (Europe)", "Geizhals.de (Germany)", "Geizhals.at (Austria)"]
+      "enum": [
+        "eu",
+        "de",
+        "at"
+      ],
+      "enumTitles": [
+        "Geizhals.eu (Europe)",
+        "Geizhals.de (Germany)",
+        "Geizhals.at (Austria)"
+      ]
     },
     "minPrice": {
       "title": "Minimum Price (optional)",
@@ -58,9 +59,9 @@
     "results_wanted": {
       "title": "Maximum Number of Products",
       "type": "integer",
-      "description": "Maximum number of products to collect. Leave empty or set to 0 to collect all available products.",
+      "description": "Maximum number of products to collect.",
       "minimum": 1,
-      "default": 100,
+      "default": 20,
       "editor": "number"
     },
     "max_pages": {
@@ -78,7 +79,9 @@
       "editor": "proxy",
       "default": {
         "useApifyProxy": true,
-        "apifyProxyGroups": ["RESIDENTIAL"]
+        "apifyProxyGroups": [
+          "RESIDENTIAL"
+        ]
       }
     }
   },
