@@ -303,10 +303,8 @@ async function main() {
                     }
 
                     if (collectDetails && links.length > 0) {
-                        // Enqueue 20% extra to compensate for failed/blocked requests
                         const remaining = RESULTS_WANTED - saved;
-                        const buffer = Math.ceil(remaining * 0.2);
-                        const toEnqueue = links.slice(0, Math.max(0, remaining + buffer));
+                        const toEnqueue = links.slice(0, Math.max(0, remaining));
                         if (toEnqueue.length) {
                             await enqueueLinks({
                                 urls: toEnqueue,
