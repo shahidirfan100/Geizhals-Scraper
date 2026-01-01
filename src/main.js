@@ -146,15 +146,16 @@ async function main() {
         // Find product links with multiple selector strategies
         function findProductLinks($, base) {
             const links = new Set();
+            let rawCount = 0;
 
             // Strategy 1: Direct product card links
             $('.productlist__item a[href*="-a"], .listview__item a[href*="-a"]').each((_, a) => {
                 const href = $(a).attr('href');
                 if (href && /-a\d+\.html/i.test(href)) {
+                    rawCount++;
                     let abs = toAbs(href, base);
-                    // Clean URL: remove hloc parameters that trigger blocking
                     if (abs) {
-                        abs = abs.split('?')[0]; // Remove all query parameters
+                        abs = abs.split('?')[0];
                         if (!seenUrls.has(abs)) {
                             links.add(abs);
                             seenUrls.add(abs);
@@ -163,14 +164,15 @@ async function main() {
                 }
             });
 
-            // Strategy 2: All links matching product URL pattern
-            if (links.size === 0) {
+            // Strategy 2: All links matching product URL pattern (fallback)
+            if (links.size === 0 && rawCount === 0) {
                 $('a[href]').each((_, a) => {
                     const href = $(a).attr('href');
                     if (href && /-a\d+\.html/i.test(href)) {
+                        rawCount++;
                         let abs = toAbs(href, base);
                         if (abs) {
-                            abs = abs.split('?')[0]; // Remove query parameters
+                            abs = abs.split('?')[0];
                             if (!seenUrls.has(abs)) {
                                 links.add(abs);
                                 seenUrls.add(abs);
@@ -180,7 +182,7 @@ async function main() {
                 });
             }
 
-            return [...links];
+            return { newLinks: [...links], rawCount };
         }
 
         // Find next page with multiple strategies
@@ -293,13 +295,15 @@ async function main() {
 
                 if (label === 'LIST') {
                     pagesVisited++;
-                    const links = findProductLinks($, request.url);
+                    const { newLinks: links, rawCount } = findProductLinks($, request.url);
 
-                    // Only log important events
+                    // Log with both raw and new unique counts
                     if (links.length > 0) {
-                        crawlerLog.info(`📄 Page ${pageNo}: ${links.length} products found`);
+                        crawlerLog.info(`📄 Page ${pageNo}: ${links.length} new products (${rawCount} total on page)`);
+                    } else if (rawCount > 0) {
+                        crawlerLog.info(`� Page ${pageNo}: ${rawCount} products (all duplicates)`);
                     } else {
-                        crawlerLog.info(`📍 No more products on page ${pageNo} - stopping pagination`);
+                        crawlerLog.info(`📍 Page ${pageNo}: No products found`);
                     }
 
                     if (collectDetails && links.length > 0) {
@@ -376,25 +380,22 @@ async function main() {
                         }
                     }
 
-                    // Pagination - only continue if we haven't reached target AND found products on this page
+                    // Pagination - continue as long as we need more AND there's a next page
                     const needMore = saved < RESULTS_WANTED;
-                    const hasProducts = links.length > 0;
                     const canPaginate = pageNo < MAX_PAGES;
+                    const next = findNextPage($, request.url, pageNo);
 
-                    if (needMore && hasProducts && canPaginate) {
-                        const next = findNextPage($, request.url, pageNo);
-                        if (next) {
-                            await enqueueLinks({
-                                urls: [next],
-                                userData: { label: 'LIST', pageNo: pageNo + 1, referrer: request.url },
-                            });
-                        }
+                    if (needMore && canPaginate && next) {
+                        await enqueueLinks({
+                            urls: [next],
+                            userData: { label: 'LIST', pageNo: pageNo + 1, referrer: request.url },
+                        });
+                        crawlerLog.info(`➡️ Queued page ${pageNo + 1}`);
                     } else {
-                        // Stop pagination
                         if (!needMore) {
                             crawlerLog.info(`✅ Target reached: ${saved}/${RESULTS_WANTED}`);
-                        } else if (!hasProducts) {
-                            crawlerLog.info(`📍 No more products - stopping`);
+                        } else if (!next) {
+                            crawlerLog.info(`📍 Last page reached`);
                         }
                     }
                     return;
