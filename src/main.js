@@ -75,7 +75,7 @@ async function main() {
 
         let saved = 0;
         let pagesVisited = 0;
-        const seenUrls = new Set();
+        const seenProductIds = new Set(); // Track product IDs, not URLs
 
         // Extract product ID from Geizhals URL
         function extractProductId(url) {
@@ -143,6 +143,12 @@ async function main() {
             return null;
         }
 
+        // Extract product ID from Geizhals URL (e.g., -a3257225.html -> 3257225)
+        function extractProductIdFromUrl(url) {
+            const match = url.match(/-a(\d+)\.html/i);
+            return match ? match[1] : null;
+        }
+
         // Find product links with multiple selector strategies
         function findProductLinks($, base) {
             const links = new Set();
@@ -153,12 +159,13 @@ async function main() {
                 const href = $(a).attr('href');
                 if (href && /-a\d+\.html/i.test(href)) {
                     rawCount++;
-                    let abs = toAbs(href, base);
+                    const abs = toAbs(href, base);
                     if (abs) {
-                        abs = abs.split('?')[0];
-                        if (!seenUrls.has(abs)) {
-                            links.add(abs);
-                            seenUrls.add(abs);
+                        const productId = extractProductIdFromUrl(abs);
+                        // Dedupe by product ID, not URL
+                        if (productId && !seenProductIds.has(productId)) {
+                            links.add(abs.split('?')[0]); // Clean URL for request
+                            seenProductIds.add(productId);
                         }
                     }
                 }
@@ -170,12 +177,12 @@ async function main() {
                     const href = $(a).attr('href');
                     if (href && /-a\d+\.html/i.test(href)) {
                         rawCount++;
-                        let abs = toAbs(href, base);
+                        const abs = toAbs(href, base);
                         if (abs) {
-                            abs = abs.split('?')[0];
-                            if (!seenUrls.has(abs)) {
-                                links.add(abs);
-                                seenUrls.add(abs);
+                            const productId = extractProductIdFromUrl(abs);
+                            if (productId && !seenProductIds.has(productId)) {
+                                links.add(abs.split('?')[0]);
+                                seenProductIds.add(productId);
                             }
                         }
                     }
