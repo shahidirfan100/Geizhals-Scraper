@@ -8,7 +8,7 @@
   "proxyConfiguration": {
     "useApifyProxy": true,
     "apifyProxyGroups": [
-      "RESIDENTIAL"
+      "SHADER"
     ]
   }
 }

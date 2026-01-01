@@ -52,12 +52,12 @@
     "proxyConfiguration": {
       "title": "Proxy Configuration",
       "type": "object",
-      "description": "Proxy settings to avoid rate limiting and blocks. Residential proxies recommended for reliable scraping.",
+      "description": "Proxy settings. SHADER (datacenter) is fastest and cheapest. Use RESIDENTIAL only if getting blocked.",
       "editor": "proxy",
       "default": {
         "useApifyProxy": true,
         "apifyProxyGroups": [
-          "RESIDENTIAL"
+          "SHADER"
         ]
       }
     }

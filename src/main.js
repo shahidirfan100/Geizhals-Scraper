@@ -234,18 +234,18 @@ async function main() {
 
         const crawler = new CheerioCrawler({
             proxyConfiguration: proxyConf,
-            maxRequestRetries: 3, // Reduced to fail faster on blocks
+            maxRequestRetries: 3, // Fast failure - don't waste time on blocked URLs
             useSessionPool: true,
             persistCookiesPerSession: true,
             sessionPoolOptions: {
-                maxPoolSize: 20,
+                maxPoolSize: 10, // Smaller pool = less memory
                 sessionOptions: {
-                    maxUsageCount: 10, // Rotate sessions more frequently
+                    maxUsageCount: 15, // More usage per session = less overhead
                 },
             },
-            maxConcurrency: 3, // Increased from 2 for better speed
-            minConcurrency: 1,
-            requestHandlerTimeoutSecs: 60, // Reduced from 90 for faster failures
+            maxConcurrency: 5, // Fast parallel processing
+            minConcurrency: 2,
+            requestHandlerTimeoutSecs: 30, // Fast timeout
 
             // Enhanced stealth with User-Agent rotation and delays
             preNavigationHooks: [
@@ -281,8 +281,8 @@ async function main() {
                         gotOptions.headers['Referer'] = request.userData.referrer;
                     }
 
-                    // Add random delay (1-3 seconds) to mimic human behavior
-                    const delay = 1000 + Math.random() * 2000;
+                    // Minimal delay (200-500ms) - fast but not too aggressive
+                    const delay = 200 + Math.random() * 300;
                     await new Promise(resolve => setTimeout(resolve, delay));
                 },
             ],
@@ -303,8 +303,10 @@ async function main() {
                     }
 
                     if (collectDetails && links.length > 0) {
+                        // Enqueue 20% extra to compensate for failed/blocked requests
                         const remaining = RESULTS_WANTED - saved;
-                        const toEnqueue = links.slice(0, Math.max(0, remaining));
+                        const buffer = Math.ceil(remaining * 0.2);
+                        const toEnqueue = links.slice(0, Math.max(0, remaining + buffer));
                         if (toEnqueue.length) {
                             await enqueueLinks({
                                 urls: toEnqueue,
@@ -432,7 +434,7 @@ async function main() {
                         let brand = null;
                         if (productName) {
                             const firstWord = productName.trim().split(/\s+/)[0];
-                            if (firstWord && firstWord.length > 1 && !/^(info|beim|hersteller)$/i.test(firstWord)) {
+                            if (firstWord && firstWord.length > 1 && !/^(info|beim|hersteller|the|a|an)$/i.test(firstWord)) {
                                 brand = firstWord;
                             }
                         }
